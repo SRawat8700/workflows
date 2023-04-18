@@ -1,0 +1,60 @@
+# This is a basic workflow that is manually triggered
+
+name: Production
+
+# Controls when the action will run. Workflow runs when manually triggered using the UI
+# or API.
+on:
+  workflow_dispatch
+
+# This is a basic workflow that is manually triggered
+
+jobs:
+  
+  build:
+    
+    name: Build Image
+    runs-on: self-hosted
+
+   
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v2
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-2
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: evolvfit-backend
+        IMAGE_TAG: ${{ github.run_number }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        
+    - name: Stop Builds
+      run: |
+        docker stop work_backend || true && docker rm work_backend || true
+    
+    - name: Deployment
+      run: |
+        aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 227644801203.dkr.ecr.us-east-2.amazonaws.com 
+        docker pull 227644801203.dkr.ecr.us-east-2.amazonaws.com/evolvfit-backend:${{ github.run_number }}
+        docker run -p 8802:5000 --name work_backend -d 227644801203.dkr.ecr.us-east-2.amazonaws.com/evolvfit-backend:${{ github.run_number }}
+        
+    - name: Cleanup Workspace
+      run: |
+        docker image prune -a -f
+        docker container prune -f
+        docker volume prune -f
+         
